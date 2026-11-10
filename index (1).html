@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cidade do Manual da Engenharia</title>
+<style id="css">
+:root{--bg:#eef1ea;--road:#59616d;--lot:#bddc9f;--text:#1f2937;--card:#ffffff;--accent:#ea580c;--line:#cfd6c8;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10161d;--road:#2b333d;--lot:#27442f;--text:#f1f5f9;--card:#1b242e;--accent:#fb923c;--line:#2f3a46;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#10161d;--road:#2b333d;--lot:#27442f;--text:#f1f5f9;--card:#1b242e;--accent:#fb923c;--line:#2f3a46;color-scheme:dark}
+html,body{height:100%;margin:0}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif}
+header{padding:10px 12px 8px;border-bottom:1px solid var(--line);background:var(--card)}
+h1{font-size:16px;margin:0 0 6px;font-weight:700;letter-spacing:.2px}
+.row{display:flex;gap:8px}
+input{flex:1;min-width:0;font:inherit;font-size:16px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}
+button{font:inherit;border:0;border-radius:8px;background:var(--accent);color:#fff;padding:9px 14px;font-weight:700;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+#msg{font-size:13px;min-height:18px;margin-top:5px;opacity:.85}
+#wrap{flex:1;min-height:0;position:relative}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.zoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px}
+.zoom button{width:42px;height:42px;padding:0;font-size:20px;background:var(--card);color:var(--text);border:1px solid var(--line)}
+#info{position:absolute;left:10px;bottom:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:14px;max-width:60%;display:none}
+#info b{color:var(--accent)}
+#adm{position:absolute;left:10px;top:10px;background:var(--card);color:var(--text);border:1px solid var(--line)}
+#pan{position:absolute;left:10px;top:56px;right:10px;max-width:360px;max-height:60%;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;z-index:5}
+#pan[hidden]{display:none}
+#alist .it{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);font-size:14px}
+#alist .it button{padding:4px 8px;font-size:12px;background:var(--line);color:var(--text)}
+#amsg{font-size:13px;margin-top:6px}
+</style>
+</head>
+<body>
+<template id="tpl">
+<header>
+  <h1>Cidade do Manual da Engenharia</h1>
+  <div class="row">
+    <input id="q" type="text" placeholder="Digite seu @ para achar sua casa" autocapitalize="none" autocomplete="off" aria-label="Buscar @">
+    <button id="go">Buscar</button>
+  </div>
+  <div id="msg">Arraste o mapa, use dois dedos para dar zoom.</div>
+</header>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div id="info"></div>
+  <div class="zoom">
+    <button id="zin" aria-label="Aproximar">+</button>
+    <button id="zout" aria-label="Afastar">−</button>
+    <button id="fit" aria-label="Ver a cidade toda" style="font-size:13px">Tudo</button>
+  </div>
+</div>
+</template>
+<script id="app">
+document.body.prepend(document.getElementById("tpl").content.cloneNode(true));
+let MORADORES=[{"u":"@its_anjxz","lote":1},{"u":"@biel_xhwz","lote":2},{"u":"@seu_melhor_amigoth","lote":3},{"u":"@lucasplenz","lote":4},{"u":"@euvandia_breves","lote":5},{"u":"@bruno_aguiar_paulino","lote":7}]; // @@DADOS
+// ======================================================================================
+const COLS=10,ROWS=6,LOT=80,STEP=100,GAP=60,M=60,TOTAL=COLS*ROWS;
+const byLot={};MORADORES.forEach(m=>byLot[m.lote]=m);
+const cols=["#e76f51","#f4a261","#e9c46a","#2a9d8f","#4d96d9","#9b72cf","#d96aa7","#6bbf59"];
+function lotPos(n){const i=n-1,c=i%COLS,r=Math.floor(i/COLS);return{x:M+c*STEP+Math.floor(c/5)*GAP,y:M+r*STEP+Math.floor(r/3)*GAP}}
+const last=lotPos(TOTAL);const B={x0:M,y0:M,x1:last.x+LOT,y1:last.y+LOT};
+const cv=document.getElementById("cv"),ctx=cv.getContext("2d"),wrap=document.getElementById("wrap");
+const info=document.getElementById("info"),msg=document.getElementById("msg"),q=document.getElementById("q");
+let dpr=1,z=1,cx=0,cy=0,sel=null,fly=null;
+function hash(s){let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))>>>0;return h}
+function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
+function size(){dpr=window.devicePixelRatio||1;cv.width=wrap.clientWidth*dpr;cv.height=wrap.clientHeight*dpr}
+function fitAll(){const w=wrap.clientWidth,h=wrap.clientHeight,bw=B.x1-B.x0+80,bh=B.y1-B.y0+80;z=Math.min(w/bw,h/bh);cx=w/2-(B.x0+B.x1)/2*z;cy=h/2-(B.y0+B.y1)/2*z}
+function zoomAt(f,sx,sy){const nz=Math.max(.25,Math.min(4,z*f));cx=sx-(sx-cx)*nz/z;cy=sy-(sy-cy)*nz/z;z=nz}
+function house(x,y,u){
+  const c=cols[hash(u)%cols.length];
+  ctx.fillStyle=c;ctx.fillRect(x+16,y+36,48,34);
+  ctx.fillStyle="rgba(0,0,0,.28)";ctx.beginPath();ctx.moveTo(x+9,y+37);ctx.lineTo(x+40,y+14);ctx.lineTo(x+71,y+37);ctx.closePath();ctx.fill();
+  ctx.fillStyle="#fff8e1";ctx.fillRect(x+22,y+44,12,10);ctx.fillRect(x+48,y+44,10,10);
+  ctx.fillStyle="#5b3a1e";ctx.fillRect(x+37,y+52,8,18);
+}
+function label(text,sx,sy,hl){
+  const fs=Math.min(15,Math.max(10,11*z));ctx.font="700 "+fs+"px 'Trebuchet MS',system-ui,sans-serif";
+  const w=ctx.measureText(text).width+12,h=fs+8,s=getComputedStyle(document.documentElement);
+  ctx.fillStyle=hl?s.getPropertyValue("--accent").trim():s.getPropertyValue("--card").trim();
+  rr(sx-w/2,sy-h,w,h,h/2);ctx.fill();
+  ctx.strokeStyle=s.getPropertyValue("--line").trim();ctx.lineWidth=1;ctx.stroke();
+  ctx.fillStyle=hl?"#fff":s.getPropertyValue("--text").trim();ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(text,sx,sy-h/2+1);
+}
+function draw(t){
+  if(fly){const k=Math.min(1,(t-fly.t0)/600),e=1-Math.pow(1-k,3);z=fly.z0+(fly.z1-fly.z0)*e;cx=fly.x0+(fly.x1-fly.x0)*e;cy=fly.y0+(fly.y1-fly.y0)*e;if(k>=1)fly=null}
+  const s=getComputedStyle(document.documentElement),g=k=>s.getPropertyValue(k).trim();
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,wrap.clientWidth,wrap.clientHeight);
+  ctx.save();ctx.translate(cx,cy);ctx.scale(z,z);
+  ctx.fillStyle=g("--road");rr(B.x0-30,B.y0-30,B.x1-B.x0+60,B.y1-B.y0+60,24);ctx.fill();
+  for(let n=1;n<=TOTAL;n++){
+    const p=lotPos(n);ctx.fillStyle=g("--lot");rr(p.x,p.y,LOT,LOT,10);ctx.fill();
+    const m=byLot[n];
+    if(m)house(p.x,p.y,m.u);
+    else if(z>1.1){ctx.fillStyle=g("--text");ctx.globalAlpha=.5;ctx.font="11px sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("Lote "+n+" livre",p.x+40,p.y+44);ctx.globalAlpha=1}
+  }
+  if(sel){const p=lotPos(sel),pu=(t%1200)/1200;ctx.strokeStyle=g("--accent");ctx.lineWidth=4;rr(p.x-4,p.y-4,LOT+8,LOT+8,13);ctx.stroke();
+    ctx.globalAlpha=1-pu;ctx.lineWidth=3;rr(p.x-4-pu*14,p.y-4-pu*14,LOT+8+pu*28,LOT+8+pu*28,18);ctx.stroke();ctx.globalAlpha=1}
+  ctx.restore();
+  MORADORES.forEach(m=>{const hl=m.lote===sel;if(z<.7&&!hl)return;const p=lotPos(m.lote);label(m.u+(m.t?" · "+m.t:""),(p.x+40)*z+cx,(p.y+8)*z+cy,hl)});
+  requestAnimationFrame(draw);
+}
+function select(n){
+  sel=n;const m=byLot[n];info.style.display="block";
+  info.innerHTML=m?"<b>"+m.u+"</b>"+(m.t?" · "+m.t:"")+"<br>Lote "+n:"Lote "+n+"<br>Esse lote está livre";
+}
+function flyTo(n){
+  const p=lotPos(n),w=wrap.clientWidth,h=wrap.clientHeight,z1=Math.max(z,Math.min(2.4,w/220));
+  fly={t0:performance.now(),z0:z,z1:z1,x0:cx,y0:cy,x1:w/2-(p.x+40)*z1,y1:h/2-(p.y+40)*z1};
+}
+function search(){
+  const v=q.value.trim().toLowerCase().replace(/^@/,"");if(!v)return;
+  const norm=m=>m.u.toLowerCase().replace(/^@/,"");
+  const m=MORADORES.find(x=>norm(x)===v)||MORADORES.find(x=>norm(x).startsWith(v))||MORADORES.find(x=>norm(x).includes(v));
+  if(m){select(m.lote);flyTo(m.lote);msg.textContent="Achei! Sua casa está no lote "+m.lote+".";}
+  else{msg.textContent="Não achei esse @. Confira a escrita ou peça seu lote na página.";}
+}
+document.getElementById("go").onclick=search;
+q.addEventListener("keydown",e=>{if(e.key==="Enter")search()});
+document.getElementById("zin").onclick=()=>zoomAt(1.4,wrap.clientWidth/2,wrap.clientHeight/2);
+document.getElementById("zout").onclick=()=>zoomAt(1/1.4,wrap.clientWidth/2,wrap.clientHeight/2);
+document.getElementById("fit").onclick=()=>{fitAll();sel=null;info.style.display="none"};
+const ptr=new Map();let moved=0,pinch=0;
+cv.addEventListener("pointerdown",e=>{cv.setPointerCapture(e.pointerId);ptr.set(e.pointerId,{x:e.offsetX,y:e.offsetY});moved=0;fly=null;if(ptr.size===2){const[a,b]=[...ptr.values()];pinch=Math.hypot(a.x-b.x,a.y-b.y)}});
+cv.addEventListener("pointermove",e=>{
+  if(!ptr.has(e.pointerId))return;const o=ptr.get(e.pointerId);
+  if(ptr.size===1){cx+=e.offsetX-o.x;cy+=e.offsetY-o.y;moved+=Math.abs(e.offsetX-o.x)+Math.abs(e.offsetY-o.y)}
+  ptr.set(e.pointerId,{x:e.offsetX,y:e.offsetY});
+  if(ptr.size===2){const[a,b]=[...ptr.values()],d=Math.hypot(a.x-b.x,a.y-b.y);if(pinch)zoomAt(d/pinch,(a.x+b.x)/2,(a.y+b.y)/2);pinch=d;moved=99}
+});
+function up(e){
+  if(ptr.size===1&&moved<6){
+    const wx=(e.offsetX-cx)/z,wy=(e.offsetY-cy)/z;
+    for(let n=1;n<=TOTAL;n++){const p=lotPos(n);if(wx>=p.x&&wx<=p.x+LOT&&wy>=p.y&&wy<=p.y+LOT){select(n);break}}
+  }
+  ptr.delete(e.pointerId);pinch=0;
+}
+cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",e=>{ptr.delete(e.pointerId);pinch=0});
+cv.addEventListener("wheel",e=>{e.preventDefault();zoomAt(e.deltaY<0?1.15:1/1.15,e.offsetX,e.offsetY)},{passive:false});
+let started=false;new ResizeObserver(()=>{size();if(!started&&wrap.clientWidth>0){started=true;fitAll()}}).observe(wrap);
+requestAnimationFrame(draw);
+function buildDoc(){
+  const css=document.getElementById("css").textContent;
+  let app=document.getElementById("app").textContent;
+  const json=JSON.stringify(MORADORES).replace(/</g,"\\u003c");
+  app=app.replace(/let MORADORES=.*?; \/\/ @@DADOS/,()=>"let MORADORES="+json+"; // @@DADOS");
+  const tpl=document.getElementById("tpl").innerHTML;
+  return "<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">\n<title>Cidade do Manual da Engenharia</title>\n<style id=\"css\">"+css+"</style>\n</head>\n<body>\n<template id=\"tpl\">"+tpl+"</template>\n<script id=\"app\">"+app+"<\/script>\n</body>\n</html>";
+}
+(async()=>{
+  if(typeof claude==="undefined")return;
+  try{
+    const user=await claude.use("user"),art=await claude.use("artifact");
+    if(!user||!art||!user.isOwner())return;
+    const btn=document.createElement("button");btn.id="adm";btn.textContent="Editar cidade";
+    const pan=document.createElement("div");pan.id="pan";pan.hidden=true;
+    pan.innerHTML='<div class="row"><input id="au" placeholder="@ do seguidor" autocapitalize="none"><input id="al" type="number" min="1" max="60" placeholder="Lote" style="max-width:76px"></div><div class="row" style="margin-top:6px"><button id="aadd">Adicionar</button><button id="asave">Salvar na cidade</button></div><div id="alist"></div><div id="amsg"></div>';
+    wrap.append(btn,pan);
+    const $=id=>pan.querySelector("#"+id);
+    function list(){const l=$("alist");l.textContent="";MORADORES.forEach((m,i)=>{const r=document.createElement("div");r.className="it";const s=document.createElement("span");s.textContent=m.u+" · lote "+m.lote;const x=document.createElement("button");x.textContent="Remover";x.onclick=()=>{MORADORES.splice(i,1);reb();$("amsg").textContent="Removido. Toque em Salvar na cidade."};r.append(s,x);l.append(r)})}
+    function reb(){for(const k in byLot)delete byLot[k];MORADORES.forEach(m=>byLot[m.lote]=m);list()}
+    btn.onclick=()=>{pan.hidden=!pan.hidden};
+    $("aadd").onclick=()=>{
+      let u=$("au").value.trim();if(!u)return;if(u[0]!=="@")u="@"+u;
+      let n=parseInt($("al").value,10);
+      if(!n){n=1;while(byLot[n]&&n<=TOTAL)n++}
+      if(n<1||n>TOTAL||byLot[n]){$("amsg").textContent="Esse lote já está ocupado ou não existe (1 a "+TOTAL+").";return}
+      MORADORES.push({u:u,lote:n});$("au").value="";$("al").value="";$("amsg").textContent="Adicionado no lote "+n+". Toque em Salvar na cidade.";reb();select(n);flyTo(n);
+    };
+    $("asave").onclick=async()=>{
+      try{$("amsg").textContent="Salvando...";await art.publish(buildDoc())}
+      catch(e){$("amsg").textContent=(e&&e.code==="conflict")?"Outra versão foi publicada, a página vai recarregar.":"Não consegui salvar ("+((e&&e.code)||"erro")+")."}
+    };
+    list();
+  }catch(e){}
+})();
+</script>
+</body>
+</html>
