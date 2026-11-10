@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Cidade do Manual da Engenharia</title>
-<style id="css">
+<style>
 :root{--bg:#eef1ea;--road:#59616d;--lot:#bddc9f;--text:#1f2937;--card:#ffffff;--accent:#ea580c;--line:#cfd6c8;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10161d;--road:#2b333d;--lot:#27442f;--text:#f1f5f9;--card:#1b242e;--accent:#fb923c;--line:#2f3a46;color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#10161d;--road:#2b333d;--lot:#27442f;--text:#f1f5f9;--card:#1b242e;--accent:#fb923c;--line:#2f3a46;color-scheme:dark}
@@ -23,16 +23,9 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 .zoom button{width:42px;height:42px;padding:0;font-size:20px;background:var(--card);color:var(--text);border:1px solid var(--line)}
 #info{position:absolute;left:10px;bottom:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:14px;max-width:60%;display:none}
 #info b{color:var(--accent)}
-#adm{position:absolute;left:10px;top:10px;background:var(--card);color:var(--text);border:1px solid var(--line)}
-#pan{position:absolute;left:10px;top:56px;right:10px;max-width:360px;max-height:60%;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;z-index:5}
-#pan[hidden]{display:none}
-#alist .it{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);font-size:14px}
-#alist .it button{padding:4px 8px;font-size:12px;background:var(--line);color:var(--text)}
-#amsg{font-size:13px;margin-top:6px}
 </style>
 </head>
 <body>
-<template id="tpl">
 <header>
   <h1>Cidade do Manual da Engenharia</h1>
   <div class="row">
@@ -50,13 +43,24 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
     <button id="fit" aria-label="Ver a cidade toda" style="font-size:13px">Tudo</button>
   </div>
 </div>
-</template>
-<script id="app">
-document.body.prepend(document.getElementById("tpl").content.cloneNode(true));
-let MORADORES=[{"u":"@its_anjxz","lote":1},{"u":"@biel_xhwz","lote":2},{"u":"@seu_melhor_amigoth","lote":3},{"u":"@lucasplenz","lote":4},{"u":"@euvandia_breves","lote":5},{"u":"@bruno_aguiar_paulino","lote":7}]; // @@DADOS
-// ======================================================================================
+<script>
+let MORADORES=[{"u":"@its_anjxz","lote":1},{"u":"@biel_xhwz","lote":2},{"u":"@seu_melhor_amigoth","lote":3},{"u":"@lucasplenz","lote":4},{"u":"@euvandia_breves","lote":5},{"u":"@bruno_aguiar_paulino","lote":7}];
 const COLS=10,ROWS=6,LOT=80,STEP=100,GAP=60,M=60,TOTAL=COLS*ROWS;
 const byLot={};MORADORES.forEach(m=>byLot[m.lote]=m);
+const SHEET_ID="14E5xFqaI5DQnK8MIp9JrOeXXoStpRIBoKalbkFGZ3S8";
+function parseCSV(t){const rows=[];let r=[],c="",q=false;for(let i=0;i<t.length;i++){const ch=t[i];if(q){if(ch==='"'){if(t[i+1]==='"'){c+='"';i++}else q=false}else c+=ch}else if(ch==='"')q=true;else if(ch===","){r.push(c);c=""}else if(ch==="\n"||ch==="\r"){if(ch==="\r"&&t[i+1]==="\n")i++;r.push(c);rows.push(r);r=[];c=""}else c+=ch}if(c!==""||r.length){r.push(c);rows.push(r)}return rows}
+async function loadSheet(){
+  const base="https://docs.google.com/spreadsheets/d/"+SHEET_ID;
+  const urls=[base+"/gviz/tq?tqx=out:csv&gid=0",base+"/export?format=csv&gid=0"];
+  for(const url of urls){try{
+    const res=await fetch(url,{cache:"no-store"});if(!res.ok)continue;
+    const txt=(await res.text()).replace(/^\uFEFF/,"");if(txt.trim().charAt(0)==="<")continue;
+    const list=[],used={};
+    parseCSV(txt).forEach(r=>{let u=(r[0]||"").trim();if(!u||u.toLowerCase()==="u")return;if(u[0]!=="@")u="@"+u;const n=parseInt(r[1],10);if(!(n>=1&&n<=TOTAL)||used[n])return;used[n]=1;const m={u:u,lote:n};const t=(r[2]||"").trim();if(t)m.t=t;list.push(m)});
+    MORADORES=list;for(const k in byLot)delete byLot[k];MORADORES.forEach(m=>byLot[m.lote]=m);return;
+  }catch(e){}}
+}
+loadSheet();setInterval(loadSheet,60000);
 const cols=["#e76f51","#f4a261","#e9c46a","#2a9d8f","#4d96d9","#9b72cf","#d96aa7","#6bbf59"];
 function lotPos(n){const i=n-1,c=i%COLS,r=Math.floor(i/COLS);return{x:M+c*STEP+Math.floor(c/5)*GAP,y:M+r*STEP+Math.floor(r/3)*GAP}}
 const last=lotPos(TOTAL);const B={x0:M,y0:M,x1:last.x+LOT,y1:last.y+LOT};
@@ -140,41 +144,6 @@ cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",e=>{ptr.
 cv.addEventListener("wheel",e=>{e.preventDefault();zoomAt(e.deltaY<0?1.15:1/1.15,e.offsetX,e.offsetY)},{passive:false});
 let started=false;new ResizeObserver(()=>{size();if(!started&&wrap.clientWidth>0){started=true;fitAll()}}).observe(wrap);
 requestAnimationFrame(draw);
-function buildDoc(){
-  const css=document.getElementById("css").textContent;
-  let app=document.getElementById("app").textContent;
-  const json=JSON.stringify(MORADORES).replace(/</g,"\\u003c");
-  app=app.replace(/let MORADORES=.*?; \/\/ @@DADOS/,()=>"let MORADORES="+json+"; // @@DADOS");
-  const tpl=document.getElementById("tpl").innerHTML;
-  return "<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">\n<title>Cidade do Manual da Engenharia</title>\n<style id=\"css\">"+css+"</style>\n</head>\n<body>\n<template id=\"tpl\">"+tpl+"</template>\n<script id=\"app\">"+app+"<\/script>\n</body>\n</html>";
-}
-(async()=>{
-  if(typeof claude==="undefined")return;
-  try{
-    const user=await claude.use("user"),art=await claude.use("artifact");
-    if(!user||!art||!user.isOwner())return;
-    const btn=document.createElement("button");btn.id="adm";btn.textContent="Editar cidade";
-    const pan=document.createElement("div");pan.id="pan";pan.hidden=true;
-    pan.innerHTML='<div class="row"><input id="au" placeholder="@ do seguidor" autocapitalize="none"><input id="al" type="number" min="1" max="60" placeholder="Lote" style="max-width:76px"></div><div class="row" style="margin-top:6px"><button id="aadd">Adicionar</button><button id="asave">Salvar na cidade</button></div><div id="alist"></div><div id="amsg"></div>';
-    wrap.append(btn,pan);
-    const $=id=>pan.querySelector("#"+id);
-    function list(){const l=$("alist");l.textContent="";MORADORES.forEach((m,i)=>{const r=document.createElement("div");r.className="it";const s=document.createElement("span");s.textContent=m.u+" · lote "+m.lote;const x=document.createElement("button");x.textContent="Remover";x.onclick=()=>{MORADORES.splice(i,1);reb();$("amsg").textContent="Removido. Toque em Salvar na cidade."};r.append(s,x);l.append(r)})}
-    function reb(){for(const k in byLot)delete byLot[k];MORADORES.forEach(m=>byLot[m.lote]=m);list()}
-    btn.onclick=()=>{pan.hidden=!pan.hidden};
-    $("aadd").onclick=()=>{
-      let u=$("au").value.trim();if(!u)return;if(u[0]!=="@")u="@"+u;
-      let n=parseInt($("al").value,10);
-      if(!n){n=1;while(byLot[n]&&n<=TOTAL)n++}
-      if(n<1||n>TOTAL||byLot[n]){$("amsg").textContent="Esse lote já está ocupado ou não existe (1 a "+TOTAL+").";return}
-      MORADORES.push({u:u,lote:n});$("au").value="";$("al").value="";$("amsg").textContent="Adicionado no lote "+n+". Toque em Salvar na cidade.";reb();select(n);flyTo(n);
-    };
-    $("asave").onclick=async()=>{
-      try{$("amsg").textContent="Salvando...";await art.publish(buildDoc())}
-      catch(e){$("amsg").textContent=(e&&e.code==="conflict")?"Outra versão foi publicada, a página vai recarregar.":"Não consegui salvar ("+((e&&e.code)||"erro")+")."}
-    };
-    list();
-  }catch(e){}
-})();
 </script>
 </body>
 </html>
